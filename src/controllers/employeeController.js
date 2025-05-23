@@ -12,6 +12,21 @@ exports.getAllEmployees = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+exports.list = async (req, res) => {
+  try {
+    const emps = await Employee
+      .find({ owner: req.user._id })
+      .select('-owner')                    // hide owner field
+      .sort({ name: 1 })
+      .lean();
+    res.json({ status: 'success', data: emps });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+};
+
 exports.list = async (req, res) => {
   try {
     const emps = await Employee.find({ owner: req.user._id })

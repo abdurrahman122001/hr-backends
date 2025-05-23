@@ -21,6 +21,7 @@ app.use("/api/auth", require("./routes/auth"));
 
 // Protected routes
 app.use("/api/employees", requireAuth, require("./routes/employees"));
+app.use("/api/list", requireAuth, require("./routes/employees"));
 app.use("/api/attendance", requireAuth, require("./routes/attendance"));
 app.use("/api/leaves", requireAuth, require("./routes/leaves"));
 app.use("/api/settings", requireAuth, require("./routes/settings"));
