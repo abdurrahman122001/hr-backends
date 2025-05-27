@@ -4,7 +4,6 @@ const { Schema, model, Types } = require("mongoose");
 const EmployeeSchema = new Schema(
   {
     owner: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    // Personal Details
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
 

@@ -1,6 +1,7 @@
 const express           = require('express');
 const requireAuth       = require('../middleware/auth');
 const EmployeeHierarchy = require('../models/EmployeeHierarchy');
+const ctrl = require('../controllers/hierarchyController');
 
 const router = express.Router();
 
@@ -35,5 +36,15 @@ router.post(
     }
   }
 );
+
+
+// Single relationship
+// Bulk relationships
+router.post('/bulkCreate', ctrl.bulkCreate);
+// Return the tree structure
+router.get('/', ctrl.getHierarchy);
+// (Optional) other endpoints...
+router.get('/:employeeId/directReports', ctrl.getDirectReports);
+router.get('/:employeeId/managementChain', ctrl.getManagementChain);
 
 module.exports = router;

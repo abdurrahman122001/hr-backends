@@ -4,61 +4,109 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const cron = require("node-cron");
-const shiftsRouter = require('./routes/shift');
-const Employee = require("./models/Employees");
+
+// Auth middleware
+const requireAuth = require("./middleware/auth");
+
+// Controllers
+const hierarchyController = require("./controllers/hierarchyController");
+
+// Routers
+const shiftsRouter        = require("./routes/shift");
+const employeesRouter     = require("./routes/employees");
+const attendanceRouter    = require("./routes/attendance");
+const leavesRouter        = require("./routes/leaves");
+const settingsRouter      = require("./routes/settings");
+const staffRouter         = require("./routes/staff");
+const salarySlipsRouter   = require("./routes/salarySlips");
+const authRouter          = require("./routes/auth");
+
+// Models (for cron job)
+const Employee   = require("./models/Employees");
 const Attendance = require("./models/Attendance");
-const requireAuth = require("./middleware/auth");  
-const salarySlipsRoute = require('./routes/salarySlips');
 
 const app = express();
 
+// === Middleware ===
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Public auth routes
-app.use("/api/auth", require("./routes/auth"));
+// === Public routes ===
+app.use("/api/auth", authRouter);
 
-// Protected routes
-app.use("/api/employees", requireAuth, require("./routes/employees"));
-app.use("/api/list", requireAuth, require("./routes/employees"));
-app.use("/api/attendance", requireAuth, require("./routes/attendance"));
-app.use("/api/leaves", requireAuth, require("./routes/leaves"));
-app.use("/api/settings", requireAuth, require("./routes/settings"));
-app.use("/api/staff", requireAuth, require("./routes/staff"));
-app.use('/api/salary-slips', requireAuth, salarySlipsRoute);
+// === Protected routes ===
+app.use("/api/employees", requireAuth, employeesRouter);
+app.use("/api/attendance", requireAuth, attendanceRouter);
+app.use("/api/leaves", requireAuth, leavesRouter);
+app.use("/api/settings", requireAuth, settingsRouter);
+app.use("/api/staff", requireAuth, staffRouter);
+app.use("/api/salary-slips", requireAuth, salarySlipsRouter);
 app.use("/api/shifts", requireAuth, shiftsRouter);
-app.use("/api/hierarchy", requireAuth, require("./routes/hierarchy"));
+
+// === Hierarchy endpoints ===
+// Single‐create
+app.post(
+  "/api/hierarchy/create",
+  requireAuth,
+  hierarchyController.create
+);
+
+// Bulk‐create
+app.post(
+  "/api/hierarchy/bulkCreate",
+  requireAuth,
+  hierarchyController.bulkCreate
+);
+
+// Fetch full hierarchy
+app.get(
+  "/api/hierarchy",
+  requireAuth,
+  hierarchyController.getHierarchy
+);
+
+// Direct reports
+app.get(
+  "/api/hierarchy/directReports/:employeeId",
+  requireAuth,
+  hierarchyController.getDirectReports
+);
+
+// Management chain
+app.get(
+  "/api/hierarchy/managementChain/:employeeId",
+  requireAuth,
+  hierarchyController.getManagementChain
+);
+
+// === MongoDB connection ===
 mongoose
   .connect(process.env.MONGODB_URI)
   .then(() => console.log("▶ MongoDB connected"))
   .catch((err) => console.error("MongoDB connection error:", err));
 
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`▶ API listening on port ${PORT}`));
-
+// === Cron job: auto‐fill absent attendance ===
 cron.schedule(
   "0 0 * * *",
   async () => {
     try {
       console.log("[cron] … auto-fill pending attendance");
-
-      // 1) yesterday's date string
-      const now = new Date();
-      now.setDate(now.getDate() - 1);
-      const y = now.getFullYear();
-      const m = String(now.getMonth() + 1).padStart(2, "0");
-      const d = String(now.getDate()).padStart(2, "0");
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const y = yesterday.getFullYear();
+      const m = String(yesterday.getMonth() + 1).padStart(2, "0");
+      const d = String(yesterday.getDate()).padStart(2, "0");
       const date = `${y}-${m}-${d}`;
 
-      // 2) who already has records for that date?
+      // Who already has records?
       const done = await Attendance.find({ date }).select("employee").lean();
       const doneIds = new Set(done.map((r) => r.employee.toString()));
 
-      // 3) grab everybody
+      // All employees
       const allEmps = await Employee.find({}).select("_id").lean();
 
-      // 4) bulk upsert missing ones as Absent
+      // Upsert missing ones as Absent
       const ops = allEmps
         .filter((e) => !doneIds.has(e._id.toString()))
         .map((e) => ({
@@ -91,7 +139,9 @@ cron.schedule(
       console.error("[cron] error auto-filling pending:", err);
     }
   },
-  {
-    timezone: "UTC",
-  }
+  { timezone: "UTC" }
 );
+
+// === Start server ===
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => console.log(`▶ API listening on port ${PORT}`));
