@@ -46,12 +46,16 @@ const deductions = [
 // GET all slips for the logged-in owner, newest first
 router.get('/', requireAuth, async (req, res) => {
   try {
+    // find all your employees
     const emps = await Employee.find({ owner: req.user._id }).select('_id');
     const ids = emps.map(e => e._id);
+
+    // populate name, department & designation
     const slips = await SalarySlip
       .find({ employee: { $in: ids } })
-      .populate('employee', 'name')
+      .populate('employee', 'name department designation')
       .sort({ createdAt: -1 });
+
     res.json({ slips });
   } catch (err) {
     console.error(err);
@@ -62,7 +66,7 @@ router.get('/', requireAuth, async (req, res) => {
 // Download one slip as PDF
 router.get('/:id/download', requireAuth, async (req, res) => {
   try {
-    // Fetch and populate
+    // Fetch and populate the *singular* employee field (no trailing 's')
     const slip = await SalarySlip
       .findById(req.params.id)
       .populate('employee', 'name department designation joiningDate owner');
