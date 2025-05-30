@@ -1,15 +1,20 @@
-const { Schema, model } = require('mongoose');
+// src/models/Leaves.js
+const { Schema, model, Types } = require('mongoose');
+
 const LeavesSchema = new Schema({
-  owner:         { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  employee: { type: Schema.Types.ObjectId, ref: 'Employee', required: true },
-  date:     { type: String, required: true },
+  employee:      { type: Types.ObjectId, ref: 'Employee', required: true },
+  date:          { type: Date, required: true },    // start date in YYYY-MM-DD
+  endDate:       { type: Date,   required: true },
   daysRequested: { type: Number, required: true },
-  endDate:       { type: Date, required: true },
-  status:   { type: String, enum: ['Pending','Approved','Rejected', 'Withdrawn'], default: 'Pending' },
-  requestedAt:   { type: Date, default: () => new Date() },
+  noticeDays:    { type: Number, required: true },    // computed at request time
+  requestText:   { type: String, required: true },    // full email body
+  leaveType:     { type: String, enum: ['Paid','Unpaid'], default: null },
+  status:        { type: String, enum: ['Pending','Approved','Rejected'], default: 'Pending' },
+  requestedAt:   { type: Date,   default: () => new Date() },
   approvedAt:    { type: Date }
 }, { timestamps: true });
 
-LeavesSchema.index({ employee:1, date:1, endDate: 1  }, { unique: true });
+// prevent duplicate requests for same date range
+LeavesSchema.index({ employee:1, date:1, endDate:1 }, { unique: true });
 
 module.exports = model('Leaves', LeavesSchema);

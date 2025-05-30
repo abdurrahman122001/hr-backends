@@ -10,6 +10,7 @@ const requireAuth = require("./middleware/auth");
 
 // Controllers
 const hierarchyController = require("./controllers/hierarchyController");
+const offerLetterRouter = require('./routes/offerLetter');
 
 // Routers
 const shiftsRouter        = require("./routes/shift");
@@ -20,6 +21,8 @@ const settingsRouter      = require("./routes/settings");
 const staffRouter         = require("./routes/staff");
 const salarySlipsRouter   = require("./routes/salarySlips");
 const authRouter          = require("./routes/auth");
+const attendanceConfigRouter    = require("./routes/attendanceConfig");
+
 
 // Models (for cron job)
 const Employee   = require("./models/Employees");
@@ -43,6 +46,8 @@ app.use("/api/settings", requireAuth, settingsRouter);
 app.use("/api/staff", requireAuth, staffRouter);
 app.use("/api/salary-slips", requireAuth, salarySlipsRouter);
 app.use("/api/shifts", requireAuth, shiftsRouter);
+app.use('/api/offer-letter', offerLetterRouter);
+app.use("/api/attendance-config", requireAuth, attendanceConfigRouter);
 
 // === Hierarchy endpoints ===
 // Single‐create
