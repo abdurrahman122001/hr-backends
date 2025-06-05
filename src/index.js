@@ -5,28 +5,33 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const cron = require("node-cron");
 
+const hrAuthRoutes = require("./routes/hrAuth");
+const offerLetterRouter = require("./routes/offerLetter");
+const employeeCompleteRouter = require("./routes/employeeComplete");
+
 // Auth middleware
 const requireAuth = require("./middleware/auth");
 
 // Controllers
 const hierarchyController = require("./controllers/hierarchyController");
-const offerLetterRouter = require('./routes/offerLetter');
 
 // Routers
-const shiftsRouter        = require("./routes/shift");
-const employeesRouter     = require("./routes/employees");
-const attendanceRouter    = require("./routes/attendance");
-const leavesRouter        = require("./routes/leaves");
-const settingsRouter      = require("./routes/settings");
-const staffRouter         = require("./routes/staff");
-const salarySlipsRouter   = require("./routes/salarySlips");
-const authRouter          = require("./routes/auth");
-const attendanceConfigRouter    = require("./routes/attendanceConfig");
-
+const shiftsRouter = require("./routes/shift");
+const employeesRouter = require("./routes/employees");
+const attendanceRouter = require("./routes/attendance");
+const leavesRouter = require("./routes/leaves");
+const settingsRouter = require("./routes/settings");
+const staffRouter = require("./routes/staff");
+const salarySlipsRouter = require("./routes/salarySlips");
+const authRouter = require("./routes/auth");
+const attendanceConfigRouter = require("./routes/attendanceConfig");
 
 // Models (for cron job)
-const Employee   = require("./models/Employees");
+const Employee = require("./models/Employees");
 const Attendance = require("./models/Attendance");
+
+// IMAP watcher
+const { startWatcher } = require("./watcher");
 
 const app = express();
 
@@ -46,38 +51,35 @@ app.use("/api/settings", requireAuth, settingsRouter);
 app.use("/api/staff", requireAuth, staffRouter);
 app.use("/api/salary-slips", requireAuth, salarySlipsRouter);
 app.use("/api/shifts", requireAuth, shiftsRouter);
-app.use('/api/offer-letter', offerLetterRouter);
+app.use("/api/offer-letter", offerLetterRouter); // offerLetter endpoints are public/auth-checked as needed
 app.use("/api/attendance-config", requireAuth, attendanceConfigRouter);
-
+app.use("/api/hr", hrAuthRoutes);
+app.use("/api/employee", employeeCompleteRouter);
 // === Hierarchy endpoints ===
-// Single‐create
+// Single-create
 app.post(
   "/api/hierarchy/create",
   requireAuth,
   hierarchyController.create
 );
-
-// Bulk‐create
+// Bulk-create
 app.post(
   "/api/hierarchy/bulkCreate",
   requireAuth,
   hierarchyController.bulkCreate
 );
-
 // Fetch full hierarchy
 app.get(
   "/api/hierarchy",
   requireAuth,
   hierarchyController.getHierarchy
 );
-
 // Direct reports
 app.get(
   "/api/hierarchy/directReports/:employeeId",
   requireAuth,
   hierarchyController.getDirectReports
 );
-
 // Management chain
 app.get(
   "/api/hierarchy/managementChain/:employeeId",
@@ -87,11 +89,18 @@ app.get(
 
 // === MongoDB connection ===
 mongoose
-  .connect(process.env.MONGODB_URI)
-  .then(() => console.log("▶ MongoDB connected"))
-  .catch((err) => console.error("MongoDB connection error:", err));
+  .connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => {
+    console.log("▶ MongoDB connected");
+    // Start IMAP watcher after DB connection
+    startWatcher();
+  })
+  .catch((err) => console.error("❌ MongoDB connection error:", err));
 
-// === Cron job: auto‐fill absent attendance ===
+// === Cron job: auto-fill absent attendance ===
 cron.schedule(
   "0 0 * * *",
   async () => {
@@ -104,16 +113,22 @@ cron.schedule(
       const d = String(yesterday.getDate()).padStart(2, "0");
       const date = `${y}-${m}-${d}`;
 
+      // Fetch owner-specific configs if needed
+      const configsByOwner = {}; // assume loaded elsewhere if you have per-owner settings
+
       // Who already has records?
       const done = await Attendance.find({ date }).select("employee").lean();
       const doneIds = new Set(done.map((r) => r.employee.toString()));
 
       // All employees
-      const allEmps = await Employee.find({}).select("_id").lean();
+      const allEmps = await Employee.find({}).select("_id owner").lean();
 
-      // Upsert missing ones as Absent
       const ops = allEmps
-        .filter((e) => !doneIds.has(e._id.toString()))
+        .filter((e) => {
+          if (doneIds.has(e._id.toString())) return false;
+          const cfg = configsByOwner[e._id.toString()];
+          return !cfg || !cfg.markAbsentManually;
+        })
         .map((e) => ({
           updateOne: {
             filter: { employee: e._id, date },
@@ -121,6 +136,7 @@ cron.schedule(
               $setOnInsert: {
                 employee: e._id,
                 date,
+                owner: e.owner,
                 status: "Absent",
                 checkIn: null,
                 checkOut: null,

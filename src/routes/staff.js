@@ -1,34 +1,35 @@
 // backend/src/routes/staff.js
-const express           = require('express');
-const multer            = require('multer');
-const path              = require('path');
+const express           = require("express");
+const multer            = require("multer");
+const path              = require("path");
 const router            = express.Router();
-const requireAuth       = require('../middleware/auth');
-const Employee          = require('../models/Employees');
-const SalarySlip        = require('../models/SalarySlip');
-const EmployeeHierarchy = require('../models/EmployeeHierarchy');
+const requireAuth       = require("../middleware/auth");
+const Employee          = require("../models/Employees");
+const SalarySlip        = require("../models/SalarySlip");
+const EmployeeHierarchy = require("../models/EmployeeHierarchy");
 
 // Multer setup for photo uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, '../uploads/photos'));
+    cb(null, path.join(__dirname, "../uploads/photos"));
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
     cb(null, `${Date.now()}${ext}`);
-  }
+  },
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB max
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
 });
 
 router.post(
-  '/create',
+  "/create",
   requireAuth,
-  upload.single('photographFile'),
+  upload.single("photographFile"),
   async (req, res) => {
     const {
+      // ────────────────────────────────────────────────────────────────────
       // Personal
       name,
       email,
@@ -53,13 +54,13 @@ router.post(
       nomineeEmergencyNo,
       rt,
 
-      // Employment
+      // ─ Employment ───────────────────────────────────────────────────────
       department,
       designation,
       joiningDate,
-      leaveEntitlementTotal,
+      leaveEntitlement,
 
-      // Compensation
+      // ─ Compensation ────────────────────────────────────────────────────
       basic,
       dearnessAllowance,
       houseRentAllowance,
@@ -74,10 +75,10 @@ router.post(
       autoAllowance,
       incentive,
       fuelAllowance,
-      others,            // maps to compensation.others
+      othersAllowances,
       grossSalary,
 
-      // Deductions
+      // ─ Deductions ───────────────────────────────────────────────────────
       leaveDeductions,
       lateDeductions,
       eobiDeduction,
@@ -93,25 +94,45 @@ router.post(
       otherDeductions,
       taxDeduction,
 
-      // Hierarchy
+      // ─ Hierarchy ────────────────────────────────────────────────────────
       seniorId,
       juniorId,
-      relation
+      relation,
+
+      // ─ HR/Admin flags ───────────────────────────────────────────────────
+      isHR,
+      isAdmin,
+      password,
     } = req.body;
 
+    // Required fields
     if (!name || !department || !designation) {
       return res.status(400).json({
-        status: 'error',
-        message: 'Missing required fields: name, department, designation'
+        status: "error",
+        message: "Missing required fields: name, department, designation",
       });
     }
 
     try {
-      // 1) Create Employee
+      // ────────────────────────────────────────────────────────────────────
+      // If marking as HR, ensure a password was provided
+      // ────────────────────────────────────────────────────────────────────
+      const hrFlag = isHR === "true" || isHR === true;
+      if (hrFlag && !password) {
+        return res.status(400).json({
+          status: "error",
+          message: "Password is required when isHR = true.",
+        });
+      }
+
+      // ────────────────────────────────────────────────────────────────────
+      // 1) Create Employee record (Mongoose pre-save will hash `password`)
+      // ────────────────────────────────────────────────────────────────────
       const emp = new Employee({
         owner:               req.user._id,
         name,
         email,
+        password:            hrFlag ? password : null,
         fatherOrHusbandName,
         cnic,
         photographUrl:       req.file ? `/uploads/photos/${req.file.filename}` : undefined,
@@ -139,28 +160,28 @@ router.post(
         joiningDate:         joiningDate ? new Date(joiningDate) : undefined,
 
         leaveEntitlement: {
-          total:      Number(leaveEntitlementTotal) || 0,
+          total:    Number(leaveEntitlement) || 0,
           usedPaid:   0,
           usedUnpaid: 0,
         },
 
         compensation: {
-          basic:               Number(basic)               || 0,
-          dearnessAllowance:   Number(dearnessAllowance)   || 0,
-          houseRentAllowance:  Number(houseRentAllowance)  || 0,
-          conveyanceAllowance: Number(conveyanceAllowance) || 0,
-          medicalAllowance:    Number(medicalAllowance)    || 0,
-          utilityAllowance:    Number(utilityAllowance)    || 0,
-          overtimeComp:        Number(overtimeComp)        || 0,
-          dislocationAllowance:Number(dislocationAllowance)|| 0,
-          leaveEncashment:     Number(leaveEncashment)     || 0,
-          bonus:               Number(bonus)               || 0,
-          arrears:             Number(arrears)             || 0,
-          autoAllowance:       Number(autoAllowance)       || 0,
-          incentive:           Number(incentive)           || 0,
-          fuelAllowance:       Number(fuelAllowance)       || 0,
-          others:              Number(others)              || 0,
-          grossSalary:         Number(grossSalary)         || 0,
+          basic:                Number(basic)               || 0,
+          dearnessAllowance:    Number(dearnessAllowance)   || 0,
+          houseRentAllowance:   Number(houseRentAllowance)  || 0,
+          conveyanceAllowance:  Number(conveyanceAllowance) || 0,
+          medicalAllowance:     Number(medicalAllowance)    || 0,
+          utilityAllowance:     Number(utilityAllowance)    || 0,
+          overtimeComp:         Number(overtimeComp)        || 0,
+          dislocationAllowance: Number(dislocationAllowance)|| 0,
+          leaveEncashment:      Number(leaveEncashment)     || 0,
+          bonus:                Number(bonus)               || 0,
+          arrears:              Number(arrears)             || 0,
+          autoAllowance:        Number(autoAllowance)       || 0,
+          incentive:            Number(incentive)           || 0,
+          fuelAllowance:        Number(fuelAllowance)       || 0,
+          others:               Number(othersAllowances)    || 0,
+          grossSalary:          Number(grossSalary)         || 0,
         },
 
         deductions: {
@@ -180,31 +201,37 @@ router.post(
           penalties:                Number(penalties)              || 0,
           others:                   Number(otherDeductions)        || 0,
           tax:                      Number(taxDeduction)           || 0,
-        }
+        },
+
+        isHR:    hrFlag,
+        isAdmin: isAdmin === "true" || isAdmin === true,
       });
+
       await emp.save();
 
+      // ────────────────────────────────────────────────────────────────────
       // 2) Create SalarySlip
+      // ────────────────────────────────────────────────────────────────────
       const slip = new SalarySlip({
-        employee:               emp._id,
-        generatedOn:            new Date(),
+        employee:             emp._id,
+        generatedOn:          new Date(),
 
-        basic:                  emp.compensation.basic,
-        dearnessAllowance:      emp.compensation.dearnessAllowance,
-        houseRentAllowance:     emp.compensation.houseRentAllowance,
-        conveyanceAllowance:    emp.compensation.conveyanceAllowance,
-        medicalAllowance:       emp.compensation.medicalAllowance,
-        utilityAllowance:       emp.compensation.utilityAllowance,
-        overtimeCompensation:   emp.compensation.overtimeComp,
-        dislocationAllowance:   emp.compensation.dislocationAllowance,
-        leaveEncashment:        emp.compensation.leaveEncashment,
-        bonus:                  emp.compensation.bonus,
-        arrears:                emp.compensation.arrears,
-        autoAllowance:          emp.compensation.autoAllowance,
-        incentive:              emp.compensation.incentive,
-        fuelAllowance:          emp.compensation.fuelAllowance,
-        othersAllowances:       emp.compensation.others,
-        grossSalary:            emp.compensation.grossSalary,
+        basic:                emp.compensation.basic,
+        dearnessAllowance:    emp.compensation.dearnessAllowance,
+        houseRentAllowance:   emp.compensation.houseRentAllowance,
+        conveyanceAllowance:  emp.compensation.conveyanceAllowance,
+        medicalAllowance:     emp.compensation.medicalAllowance,
+        utilityAllowance:     emp.compensation.utilityAllowance,
+        overtimeCompensation: emp.compensation.overtimeComp,
+        dislocationAllowance: emp.compensation.dislocationAllowance,
+        leaveEncashment:      emp.compensation.leaveEncashment,
+        bonus:                emp.compensation.bonus,
+        arrears:              emp.compensation.arrears,
+        autoAllowance:        emp.compensation.autoAllowance,
+        incentive:            emp.compensation.incentive,
+        fuelAllowance:        emp.compensation.fuelAllowance,
+        othersAllowances:     emp.compensation.others,
+        grossSalary:          emp.compensation.grossSalary,
 
         leaveDeductions:         emp.deductions.leaveDeductions,
         lateDeductions:          emp.deductions.lateDeductions,
@@ -221,11 +248,13 @@ router.post(
         lifeInsurance:           emp.deductions.lifeInsurance,
         penalties:               emp.deductions.penalties,
         othersDeductions:        emp.deductions.others,
-        taxDeduction:            emp.deductions.tax
+        taxDeduction:            emp.deductions.tax,
       });
       await slip.save();
 
+      // ────────────────────────────────────────────────────────────────────
       // 3) Hierarchy links
+      // ────────────────────────────────────────────────────────────────────
       if (seniorId) {
         await EmployeeHierarchy.create({
           owner:   req.user._id,
@@ -243,14 +272,16 @@ router.post(
         });
       }
 
-      // 4) Response
+      // ────────────────────────────────────────────────────────────────────
+      // 4) Return success
+      // ────────────────────────────────────────────────────────────────────
       res.json({
-        status: 'success',
-        data: { employee: emp, salarySlip: slip }
+        status: "success",
+        data: { employee: emp, salarySlip: slip },
       });
     } catch (err) {
-      console.error('❌ staff/create error:', err);
-      res.status(500).json({ status: 'error', message: err.message });
+      console.error("❌ staff/create error:", err);
+      res.status(500).json({ status: "error", message: err.message });
     }
   }
 );

@@ -53,7 +53,7 @@ router.get('/', requireAuth, async (req, res) => {
     // populate name, department & designation
     const slips = await SalarySlip
       .find({ employee: { $in: ids } })
-      .populate('employee', 'name department designation')
+      .populate('employee')
       .sort({ createdAt: -1 });
 
     res.json({ slips });
@@ -63,13 +63,11 @@ router.get('/', requireAuth, async (req, res) => {
   }
 });
 
-// Download one slip as PDF
 router.get('/:id/download', requireAuth, async (req, res) => {
   try {
-    // Fetch and populate the *singular* employee field (no trailing 's')
     const slip = await SalarySlip
       .findById(req.params.id)
-      .populate('employee', 'name department designation joiningDate owner');
+      .populate('employee');
 
     if (!slip) {
       return res.status(404).json({ status: 'error', message: 'Not found' });

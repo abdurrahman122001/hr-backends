@@ -5,7 +5,9 @@ const DEFAULT = {
   allowDeleteRecords: false,
   allowEditRecords:   false,
   editRecordsScope:   'current',
-  previousDaysLimit:  7
+  editPreviousDaysLimit: 7,
+  deleteRecordsScope:   'current',    // NEW
+  deletePreviousDaysLimit: 7          // NEW
 };
 
 exports.getConfig = async (req, res, next) => {
@@ -30,18 +32,22 @@ exports.updateConfig = async (req, res, next) => {
       allowDeleteRecords,
       allowEditRecords,
       editRecordsScope,
-      previousDaysLimit
+      editPreviousDaysLimit,    // NEW
+      deleteRecordsScope,       // NEW
+      deletePreviousDaysLimit   // NEW
     } = req.body;
 
     const cfg = await AttendanceConfig.findOneAndUpdate(
       { owner: req.user._id },
       {
-        owner:              req.user._id,
+        owner: req.user._id,
         markAbsentManually,
         allowDeleteRecords,
         allowEditRecords,
         editRecordsScope,
-        previousDaysLimit
+        editPreviousDaysLimit,   // NEW
+        deleteRecordsScope,      // NEW
+        deletePreviousDaysLimit  // NEW
       },
       { upsert: true, new: true }
     ).lean();
