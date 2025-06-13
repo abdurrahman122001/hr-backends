@@ -3,27 +3,29 @@ require('dotenv').config();
 const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
-  host:    process.env.MAIL_HOST,                  // smtp.titan.email
-  port:    parseInt(process.env.MAIL_PORT, 10),    // 465
-  secure:  process.env.MAIL_ENCRYPTION === 'ssl',  // ssl → true
+  host: process.env.MAIL_HOST,
+  port: Number(process.env.MAIL_PORT),
+  secure: process.env.MAIL_PORT === '465',
   auth: {
-    user: process.env.MAIL_USERNAME,               // info@brannovate.com
-    pass: process.env.MAIL_PASSWORD                // your SMTP password
-  }
+    user: process.env.MAIL_USERNAME,
+    pass: process.env.MAIL_PASSWORD,
+  },
+  tls: { rejectUnauthorized: false },
 });
 
-async function sendEmail(to, text, subject) {
-  try {
-    await transporter.sendMail({
-      from: `"${process.env.MAIL_FROM_NAME}" <${process.env.MAIL_FROM_ADDRESS}>`,
-      to,
-      subject,
-      text
-    });
-    console.log('📧 Email sent to', to);
-  } catch (err) {
-    console.error('❌ Email sending error:', err);
+async function sendEmail({ to, subject, text, html, attachments }) {
+  if (!to) {
+    throw new Error('No recipients defined');
   }
+  const mailOptions = {
+    from: process.env.MAIL_FROM || transporter.options.auth.user,
+    to,
+    subject,
+    text,
+    html,
+    attachments,
+  };
+  return transporter.sendMail(mailOptions);
 }
 
 module.exports = { sendEmail };

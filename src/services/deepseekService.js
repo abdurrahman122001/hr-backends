@@ -1,34 +1,22 @@
 require("dotenv").config();
-const axios = require("axios");
 const fs = require("fs");
-const pdfParse = require("pdf-parse");
 const Tesseract = require("tesseract.js");
+const { OpenAI } = require("openai");
 
-const AI_URL = "https://api.openai.com/v1/chat/completions";
-const AI_KEY = process.env.OPENAI_API_KEY;
-
-/**
- * Extracts text from a PDF buffer or file path.
- */
-async function extractTextFromPDF(fileData) {
-  const buffer = Buffer.isBuffer(fileData)
-    ? fileData
-    : fs.readFileSync(fileData);
-  const parsed = await pdfParse(buffer);
-  return parsed.text;
-}
+// Initialize OpenAI client
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 /**
- * Extracts text from an image buffer or file path using Tesseract.js.
+ * Extracts raw text from an image buffer or file path using Tesseract.js.
  */
 async function extractTextFromImage(fileData) {
-  const image = Buffer.isBuffer(fileData)
+  const imageBuffer = Buffer.isBuffer(fileData)
     ? fileData
     : fs.readFileSync(fileData);
 
   const {
     data: { text },
-  } = await Tesseract.recognize(image, "eng", {
+  } = await Tesseract.recognize(imageBuffer, "eng", {
     logger: (m) => console.log(m.status, m.progress),
   });
 
@@ -36,117 +24,178 @@ async function extractTextFromImage(fileData) {
 }
 
 /**
- * Sends extracted text (rawText) to GPT-4o for analysis.
- * Returns exactly the AI's string response (JSON as a string).
+ * Uses OpenAI's GPT-4o model to process extracted text.
+ * promptText: The OCR-extracted text
+ * systemInstruction: The role-based instruction for parsing
  */
 async function sendTextToAI(promptText, systemInstruction = "") {
-  const payload = {
+  const response = await openai.chat.completions.create({
     model: "gpt-4o",
     messages: [
-      {
-        role: "system",
-        content:
-          systemInstruction || "You are an expert document text extractor.",
-      },
-      {
-        role: "user",
-        content: promptText,
-      },
+      { role: "system", content: systemInstruction },
+      { role: "user", content: promptText },
     ],
     temperature: 0,
     max_tokens: 4000,
-  };
-
-  const response = await axios.post(AI_URL, payload, {
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${AI_KEY}`,
-    },
-    timeout: 30000,
   });
 
-  const content = response.data.choices[0]?.message?.content?.trim();
+  const content = response.choices?.[0]?.message?.content;
   if (!content) throw new Error("No content returned from AI");
 
-  return content;
+  return content.trim();
 }
 
 /**
- * Main function to extract and process text.
- *
- * - If fileData is a Buffer:
- *     • If documentType = "CV" or "CNIC", treat as PDF.
- *     • Otherwise, try PDF first; if that fails, run OCR.
- * - If fileData is a string path, infer extension.
- *
+ * Main extraction function: runs OCR on images then sends to GPT-4o for parsing.
+ * fileData: Buffer or file path string for an image
  * documentType: "CV" | "CNIC" | "generic"
- * Returns a JSON string from the AI. Caller must JSON.parse(...) it.
+ * Returns the JSON string result from GPT-4o.
  */
 async function extractTextUsingAI(fileData, documentType = "generic") {
-  let rawText = "";
+  let rawText;
 
+  // 1) OCR step
   if (Buffer.isBuffer(fileData)) {
-    if (documentType === "CV" || documentType === "CNIC") {
-      rawText = await extractTextFromPDF(fileData);
-    } else {
-      try {
-        rawText = await extractTextFromPDF(fileData);
-      } catch {
-        rawText = await extractTextFromImage(fileData);
-      }
-    }
+    rawText = await extractTextFromImage(fileData);
   } else if (typeof fileData === "string") {
     const ext = fileData.split(".").pop().toLowerCase();
-    if (ext === "pdf") {
-      rawText = await extractTextFromPDF(fileData);
-    } else if (["png", "jpg", "jpeg"].includes(ext)) {
+    if (["png", "jpg", "jpeg"].includes(ext)) {
       rawText = await extractTextFromImage(fileData);
     } else {
-      throw new Error("Unsupported file type.");
+      throw new Error("Unsupported file type: only png, jpg, jpeg allowed");
     }
   } else {
-    throw new Error("fileData must be a Buffer or a file path string.");
+    throw new Error("fileData must be a Buffer or file path string");
   }
 
-  const instructions = {
-    CV: `
-You are a professional CV parser. Return exactly this JSON format:
-
+  // 2) System prompt definitions
+  const prompts = {
+    CV: `You are a professional CV parser. Return exactly this JSON format (no explanation):
 {
-  "name": "Full name",
-  "email": "Email address",
   "phone": "Phone number",
+  "fatherOrHusbandName": "Father or Husband Name",
   "skills": ["Skill1", "Skill2"],
   "education": [{"degree": "BSc", "institution": "XYZ University"}],
   "experience": [{"title": "Job Title", "company": "Company", "duration": "Years"}]
-}
-Only return the JSON. Don't explain anything else.
-    `,
-    CNIC: `
-You are a CNIC parser. Return exactly this JSON format:
+}`,
 
+    CNIC: `You are a CNIC parser. Return exactly this JSON format (no explanation):
 {
-  "name": "Full name on CNIC",
   "cnic": "#####-#######-#",
+  "fatherOrHusbandName": "Father or Husband Name",
   "dateOfBirth": "YYYY-MM-DD",
   "gender": "M/F",
   "nationality": "Pakistan",
   "dateOfIssue": "YYYY-MM-DD",
   "dateOfExpiry": "YYYY-MM-DD"
-}
-Only return the JSON. Don't explain anything else.
-    `,
-    generic: `
-Extract key information from the following document text. Summarize its contents.
-    `,
+}`,
+
+    generic: `Extract key information from the following text. Summarize its contents concisely.`,
   };
 
-  const prompt = `Extracted Text:\n\n${rawText}`;
-  const instruction = instructions[documentType] || instructions.generic;
-  const result = await sendTextToAI(prompt, instruction);
+  const systemInstruction = prompts[documentType] || prompts.generic;
+  const promptText = `Extracted Text:\n\n${rawText}`;
+
+  // 3) AI parsing step
+  const result = await sendTextToAI(promptText, systemInstruction);
   return result;
 }
 
 module.exports = {
   extractTextUsingAI,
 };
+// services/extractTextUsingAI.js
+// require("dotenv").config();
+// const fs = require("fs");
+// const Tesseract = require("tesseract.js");
+// const { OpenAI } = require("openai");
+
+// // Initialize OpenAI client
+// const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// /** Read buffer from file or keep if already buffer */
+// function getBuffer(fileData) {
+//   if (Buffer.isBuffer(fileData)) return fileData;
+//   if (typeof fileData === "string") return fs.readFileSync(fileData);
+//   throw new Error("fileData must be Buffer or path");
+// }
+
+// /** Run OCR (English + Urdu) */
+// async function extractTextFromImage(fileData) {
+//   const buffer = getBuffer(fileData);
+//   const { data: { text }} = await Tesseract.recognize(buffer, "eng+urd", {
+//     logger: (m) => console.log(m.status, m.progress),
+//   });
+//   return text;
+// }
+
+// /** Send to GPT for parsing */
+// async function sendTextToAI(promptText, systemInstruction) {
+//   const res = await openai.chat.completions.create({
+//     model: "gpt-4o",
+//     messages: [
+//       { role: "system", content: systemInstruction },
+//       { role: "user", content: promptText },
+//     ],
+//     temperature: 0,
+//     max_tokens: 1024,
+//   });
+//   const content = res.choices?.[0]?.message?.content;
+//   if (!content) throw new Error("No content from AI");
+//   return content.trim();
+// }
+
+// /**
+//  * Main: supports single file or array.
+//  * documentType: "CNIC" or "generic"
+//  */
+// async function extractTextUsingAI(fileData, documentType = "CNIC") {
+//   const prompts = {
+//     CNIC: `You are a CNIC parser. OCR text may include Urdu for addresses—translate any Urdu into English. Return exactly this JSON format (no explanations):
+// {
+//   "cnic": "#####-#######-#",
+//   "fatherOrHusbandName": "Father or Husband Name",
+//   "dateOfBirth": "YYYY-MM-DD",
+//   "gender": "M/F",
+//   "nationality": "Pakistan",
+//   "dateOfIssue": "YYYY-MM-DD",
+//   "dateOfExpiry": "YYYY-MM-DD",
+//   "presentAddress": "Present address in English",
+//   "permanentAddress": "Permanent address in English"
+// }`,
+//     generic: `Extract key information from the following text and summarize it.`,
+//   };
+//   const systemInstruction = prompts[documentType] || prompts.generic;
+
+//   // Helper for one file
+//   async function processOne(file) {
+//     // OCR
+//     const rawText = await extractTextFromImage(file);
+//     const promptText = `OCR Extracted Text:\n\n${rawText}`;
+//     // AI parse
+//     const parsed = await sendTextToAI(promptText, systemInstruction);
+//     // Try to parse JSON if CNIC
+//     if (documentType === "CNIC") {
+//       try {
+//         return JSON.parse(parsed);
+//       } catch {
+//         // if not valid JSON, return raw
+//         return { error: "Invalid JSON", raw: parsed };
+//       }
+//     }
+//     return parsed;
+//   }
+
+//   // If array, map
+//   if (Array.isArray(fileData)) {
+//     const results = [];
+//     for (const f of fileData) {
+//       results.push(await processOne(f));
+//     }
+//     return results;
+//   } else {
+//     return await processOne(fileData);
+//   }
+// }
+
+// module.exports = { extractTextUsingAI };

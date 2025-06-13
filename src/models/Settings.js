@@ -1,4 +1,4 @@
-// src/models/Setings.js 
+// src/models/Settings.js
 
 const { Schema, model } = require('mongoose');
 
@@ -9,7 +9,6 @@ const SettingsSchema = new Schema({
     required: true,
     unique:   true,
   },
-
   timezone: {
     type:    String,
     default: 'UTC',
@@ -20,14 +19,14 @@ const SettingsSchema = new Schema({
   },
   payrollPeriodType: {
     type: String,
-    enum: ['weekly','10days','bimonthly','monthly'],
+    enum: ['daily', 'weekly', '10-days', 'bimonthly', 'monthly', 'custom'],
     default: 'monthly'
   },
   payrollPeriodStartDay: {
-    type: Number,
-    default: 1
-  }
-
+    type: String, // ISO date string: 'YYYY-MM-DD'
+    default: null
+  },
+  payrollPeriodLength: { type: Number },
 }, {
   timestamps: true,
 });

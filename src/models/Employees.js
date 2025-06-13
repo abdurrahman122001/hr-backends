@@ -13,12 +13,9 @@ const EmployeeSchema = new Schema(
     // CNIC is required and must be a non‐empty string
     cnic: {
       type: String,
-      required: [true, "CNIC is required"],
+      required: false,
       trim: true,
-      validate: {
-        validator: (v) => typeof v === "string" && v.trim() !== "",
-        message: "CNIC cannot be empty",
-      },
+      default: ""
     },
 
     // Email is required and must be a non‐empty string
@@ -32,22 +29,11 @@ const EmployeeSchema = new Schema(
       },
     },
 
-    // ──────────────────────────────────────────────────────────────────────
-    // Store a hashed password only if this employee is HR.
-    password: {
-      type: String,
-      required: function () {
-        return this.isHR; // only required when isHR === true
-      },
-      minlength: [6, "Password must be at least 6 characters"],
-      default: null,
-    },
-    // ──────────────────────────────────────────────────────────────────────
 
     fatherOrHusbandName: { type: String },
     photographUrl:       { type: String },
     dateOfBirth:         { type: String },
-    gender:              { type: String, enum: ["Male", "Female", "Other"] },
+    gender:              { type: String },
     nationality:         { type: String },
     cnicIssueDate:       { type: Date },
     cnicExpiryDate:      { type: Date },
@@ -71,6 +57,7 @@ const EmployeeSchema = new Schema(
     department:  { type: String },
     designation: { type: String },
     joiningDate: { type: Date },
+    shifts: [{ type: Schema.Types.ObjectId, ref: "Shift" }], // <--- ADD THIS LINE
 
     // Leave Entitlement
     leaveEntitlement: {
@@ -118,19 +105,6 @@ const EmployeeSchema = new Schema(
       others:          { type: Number, default: 0 },
       tax:             { type: Number, default: 0 },
     },
-
-    // Mark this employee as HR; if true, password is required
-    isHR: {
-      type: Boolean,
-      default: false,
-    },
-
-    // Mark this employee as an Admin (queried by HR)
-    isAdmin: {
-      type: Boolean,
-      default: false,
-    },
-
     // Reference to a User document (kept for future use if needed)
     userAccount: {
       type: Schema.Types.ObjectId,
@@ -143,29 +117,6 @@ const EmployeeSchema = new Schema(
   }
 );
 
-// ─────────────────────────────────────────────────────────────────────────
-// Hash password before saving (only if modified or new)
-EmployeeSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
-  try {
-    const hashed = await bcrypt.hash(this.password, SALT_ROUNDS);
-    this.password = hashed;
-    next();
-  } catch (err) {
-    next(err);
-  }
-});
-
-// Expose comparePassword method on instances
-EmployeeSchema.methods.comparePassword = function (candidate) {
-  return bcrypt.compare(candidate, this.password);
-};
-
-// ─────────────────────────────────────────────────────────────────────────
-// Index definitions:
-//   1) Unique on (owner + cnic), sparse: only index docs where cnic exists.
-//   2) Unique on email, sparse as well.
-//─────────────────────────────────────────────────────────────────────────
 EmployeeSchema.index(
   { owner: 1, cnic: 1 },
   {
