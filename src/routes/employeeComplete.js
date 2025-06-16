@@ -47,7 +47,7 @@ router.get("/:id/complete", requireAuth, async (req, res) => {
 router.put("/:id/complete", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    // Only these fields are expected from the form
+    // Destructure all possible form fields
     const {
       photographUrl,
       gender,
@@ -65,6 +65,15 @@ router.put("/:id/complete", requireAuth, async (req, res) => {
       department,
       designation,
       joiningDate,
+
+      // Added editable fields:
+      name,
+      email,
+      cnic,
+      dateOfBirth,
+      fatherOrHusbandName,
+      nationality,
+      phone,
     } = req.body;
 
     const emp = await Employee.findById(id);
@@ -72,7 +81,7 @@ router.put("/:id/complete", requireAuth, async (req, res) => {
       return res.status(404).json({ success: false, error: "Employee not found" });
     }
 
-    // Merge only those “remaining” fields
+    // Merge fields if present in request, otherwise leave unchanged
     emp.photographUrl = photographUrl || emp.photographUrl;
     emp.gender = gender || emp.gender;
     emp.maritalStatus = maritalStatus || emp.maritalStatus;
@@ -89,6 +98,15 @@ router.put("/:id/complete", requireAuth, async (req, res) => {
     emp.department = department || emp.department;
     emp.designation = designation || emp.designation;
     emp.joiningDate = joiningDate || emp.joiningDate;
+
+    // Newly editable fields
+    emp.name = name || emp.name;
+    emp.email = email || emp.email;
+    emp.cnic = cnic || emp.cnic;
+    emp.dateOfBirth = dateOfBirth || emp.dateOfBirth;
+    emp.fatherOrHusbandName = fatherOrHusbandName || emp.fatherOrHusbandName;
+    emp.nationality = nationality || emp.nationality;
+    emp.phone = phone || emp.phone;
 
     await emp.save();
     return res.json({ success: true, data: { _id: emp._id.toString() } });

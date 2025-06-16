@@ -20,9 +20,8 @@ const staffRouter            = require("./routes/staff");
 const salarySlipsRouter      = require("./routes/salarySlips");
 const attendanceConfigRouter = require("./routes/attendanceConfig");
 const offerLetterRoutes      = require("./routes/offerLetterRoutes");
-const employeeSalaryRoutes = require('./routes/employeeSalary');
-
-// Controller imports
+const docsRouter = require("./routes/docs");
+const employeeSalaryRouter = require("./routes/employeeSalary");
 const hierarchyController = require("./controllers/hierarchyController");
 
 // Middleware
@@ -53,7 +52,6 @@ app.use(express.urlencoded({ extended: true }));
 
 // === Public routes ===
 app.use("/api/auth", authRouter);
-
 // === Protected routes ===
 app.use("/api/employees",       requireAuth, employeesRouter);
 app.use("/api/attendance",      requireAuth, attendanceRouter);
@@ -67,7 +65,9 @@ app.use("/api/attendance-config", requireAuth, attendanceConfigRouter);
 app.use("/api/hr",              hrAuthRoutes);
 app.use("/api/employee",        employeeCompleteRouter);
 app.use("/api/company-profile", require("./routes/companyProfile"));
-app.use('/api/employee-salary', employeeSalaryRoutes);
+app.use("/api/docs", docsRouter);
+app.use("/api/employee-salary", requireAuth, employeeSalaryRouter);  // <--- THIS LINE
+
 app.post(
   "/api/hierarchy/create",
   requireAuth,
@@ -92,6 +92,11 @@ app.get(
   "/api/hierarchy/managementChain/:employeeId",
   requireAuth,
   hierarchyController.getManagementChain
+);
+app.delete(
+  "/api/hierarchy/:id",
+  requireAuth,
+  hierarchyController.deleteHierarchy
 );
 
 // === Employee count endpoint ===

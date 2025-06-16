@@ -22,12 +22,6 @@ async function extractTextFromImage(fileData) {
 
   return text;
 }
-
-/**
- * Uses OpenAI's GPT-4o model to process extracted text.
- * promptText: The OCR-extracted text
- * systemInstruction: The role-based instruction for parsing
- */
 async function sendTextToAI(promptText, systemInstruction = "") {
   const response = await openai.chat.completions.create({
     model: "gpt-4o",
@@ -44,13 +38,6 @@ async function sendTextToAI(promptText, systemInstruction = "") {
 
   return content.trim();
 }
-
-/**
- * Main extraction function: runs OCR on images then sends to GPT-4o for parsing.
- * fileData: Buffer or file path string for an image
- * documentType: "CV" | "CNIC" | "generic"
- * Returns the JSON string result from GPT-4o.
- */
 async function extractTextUsingAI(fileData, documentType = "generic") {
   let rawText;
 
@@ -104,54 +91,239 @@ async function extractTextUsingAI(fileData, documentType = "generic") {
 module.exports = {
   extractTextUsingAI,
 };
-// services/extractTextUsingAI.js
+
 // require("dotenv").config();
 // const fs = require("fs");
+// const sharp = require("sharp");
 // const Tesseract = require("tesseract.js");
 // const { OpenAI } = require("openai");
 
-// // Initialize OpenAI client
 // const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// /** Read buffer from file or keep if already buffer */
-// function getBuffer(fileData) {
-//   if (Buffer.isBuffer(fileData)) return fileData;
-//   if (typeof fileData === "string") return fs.readFileSync(fileData);
-//   throw new Error("fileData must be Buffer or path");
+// /**
+//  * Preprocess image using Sharp (grayscale + thresholding).
+//  */
+// async function preprocessImage(inputBuffer) {
+//   return await sharp(inputBuffer)
+//     .grayscale()
+//     .threshold(180) // Increase contrast by thresholding
+//     .toBuffer();
 // }
 
-// /** Run OCR (English + Urdu) */
+// /**
+//  * OCR: Extract text from image after preprocessing.
+//  */
 // async function extractTextFromImage(fileData) {
-//   const buffer = getBuffer(fileData);
-//   const { data: { text }} = await Tesseract.recognize(buffer, "eng+urd", {
+//   const imageBuffer = Buffer.isBuffer(fileData)
+//     ? fileData
+//     : fs.readFileSync(fileData);
+
+//   const processedImage = await preprocessImage(imageBuffer);
+
+//   const {
+//     data: { text },
+//   } = await Tesseract.recognize(processedImage, "eng", {
 //     logger: (m) => console.log(m.status, m.progress),
 //   });
-//   return text;
+
+//   return cleanText(text);
 // }
 
-// /** Send to GPT for parsing */
-// async function sendTextToAI(promptText, systemInstruction) {
-//   const res = await openai.chat.completions.create({
+// /**
+//  * Clean extracted text for better parsing.
+//  */
+// function cleanText(text) {
+//   return text
+//     .replace(/\s+/g, " ")         // Normalize all whitespace
+//     .replace(/[^\x20-\x7E]+/g, "") // Remove non-printable chars
+//     .trim();
+// }
+
+// /**
+//  * Query OpenAI for structured parsing.
+//  */
+// async function sendTextToAI(promptText, systemInstruction = "") {
+//   const response = await openai.chat.completions.create({
 //     model: "gpt-4o",
 //     messages: [
 //       { role: "system", content: systemInstruction },
 //       { role: "user", content: promptText },
 //     ],
 //     temperature: 0,
-//     max_tokens: 1024,
+//     max_tokens: 4096,
 //   });
-//   const content = res.choices?.[0]?.message?.content;
-//   if (!content) throw new Error("No content from AI");
+
+//   const content = response.choices?.[0]?.message?.content;
+//   if (!content) throw new Error("No content returned from AI");
 //   return content.trim();
 // }
 
 // /**
-//  * Main: supports single file or array.
-//  * documentType: "CNIC" or "generic"
+//  * Extract info from image using OCR and OpenAI.
 //  */
-// async function extractTextUsingAI(fileData, documentType = "CNIC") {
+// async function extractTextUsingAI(fileData, documentType = "generic") {
+//   let rawText;
+
+//   if (Buffer.isBuffer(fileData)) {
+//     rawText = await extractTextFromImage(fileData);
+//   } else if (typeof fileData === "string") {
+//     const ext = fileData.split(".").pop().toLowerCase();
+//     if (["png", "jpg", "jpeg"].includes(ext)) {
+//       rawText = await extractTextFromImage(fileData);
+//     } else {
+//       throw new Error("Unsupported file type: only png, jpg, jpeg allowed");
+//     }
+//   } else {
+//     throw new Error("fileData must be a Buffer or file path string");
+//   }
+
 //   const prompts = {
-//     CNIC: `You are a CNIC parser. OCR text may include Urdu for addresses—translate any Urdu into English. Return exactly this JSON format (no explanations):
+//     CV: `You are a CV parser. Return the following JSON (no extra explanation):
+// {
+//   "phone": "String",
+//   "fatherOrHusbandName": "String",
+//   "skills": ["Skill1", "Skill2"],
+//   "education": [{"degree": "String", "institution": "String"}],
+//   "experience": [{"title": "String", "company": "String", "duration": "String"}]
+// }`,
+
+//     CNIC: `You are a CNIC parser. Return only this JSON format (no explanation):
+// {
+//   "cnic": "#####-#######-#",
+//   "fatherOrHusbandName": "String",
+//   "dateOfBirth": "YYYY-MM-DD",
+//   "gender": "M/F",
+//   "nationality": "Pakistan",
+//   "dateOfIssue": "YYYY-MM-DD",
+//   "dateOfExpiry": "YYYY-MM-DD"
+// }`,
+
+//     generic: `Summarize this extracted text clearly and concisely. Highlight any relevant information.`,
+//   };
+
+//   const systemInstruction = prompts[documentType] || prompts.generic;
+//   const promptText = `Extracted OCR Text:\n\n"""${rawText}"""`;
+
+//   const result = await sendTextToAI(promptText, systemInstruction);
+//   return result;
+// }
+
+// module.exports = {
+//   extractTextUsingAI,
+// };
+// require("dotenv").config();
+// const fs = require("fs");
+// const sharp = require("sharp");
+// const Tesseract = require("tesseract.js");
+// const axios = require("axios");
+
+// const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+// /**
+//  * Preprocess image using Sharp (grayscale + threshold).
+//  */
+// async function preprocessImage(inputBuffer) {
+//   return await sharp(inputBuffer)
+//     .grayscale()
+//     .threshold(180)
+//     .toBuffer();
+// }
+
+// /**
+//  * OCR using Tesseract on preprocessed image.
+//  */
+// async function extractTextFromImage(fileData) {
+//   const imageBuffer = Buffer.isBuffer(fileData)
+//     ? fileData
+//     : fs.readFileSync(fileData);
+
+//   const processedImage = await preprocessImage(imageBuffer);
+
+//   const {
+//     data: { text },
+//   } = await Tesseract.recognize(processedImage, "eng", {
+//     logger: (m) => console.log(m.status, m.progress),
+//   });
+
+//   return cleanText(text);
+// }
+
+// /**
+//  * Clean and normalize text before sending to LLM.
+//  */
+// function cleanText(text) {
+//   return text
+//     .replace(/\s+/g, " ")
+//     .replace(/[^\x20-\x7E]+/g, "")
+//     .trim();
+// }
+
+// /**
+//  * Send text to DeepSeek R1-Zero (via OpenRouter).
+//  */
+// async function sendTextToAI(promptText, systemInstruction = "") {
+//   try {
+//     const response = await axios.post(
+//       OPENROUTER_URL,
+//       {
+//         model: "deepseek-r1-zero:free", // You can also use "deepseek-coder:6.7b"
+//         messages: [
+//           { role: "system", content: systemInstruction },
+//           { role: "user", content: promptText },
+//         ],
+//         temperature: 0.2,
+//         max_tokens: 4096,
+//       },
+//       {
+//         headers: {
+//           Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`, // Set your DeepSeek API key here
+//           "Content-Type": "application/json",
+//           "HTTP-Referer": "https://yourdomain.com", // Optional but recommended
+//           "X-Title": "deepseek-r1-zero-ocr-parser",
+//         },
+//       }
+//     );
+
+//     const content = response.data?.choices?.[0]?.message?.content;
+//     if (!content) throw new Error("No content returned from DeepSeek");
+
+//     return content.trim();
+//   } catch (err) {
+//     console.error("DeepSeek API Error:", err.message);
+//     throw err;
+//   }
+// }
+
+// /**
+//  * Main Function to Extract Text from Image & Parse via DeepSeek
+//  */
+// async function extractTextUsingAI(fileData, documentType = "generic") {
+//   let rawText;
+
+//   if (Buffer.isBuffer(fileData)) {
+//     rawText = await extractTextFromImage(fileData);
+//   } else if (typeof fileData === "string") {
+//     const ext = fileData.split(".").pop().toLowerCase();
+//     if (["png", "jpg", "jpeg"].includes(ext)) {
+//       rawText = await extractTextFromImage(fileData);
+//     } else {
+//       throw new Error("Unsupported file type: only png, jpg, jpeg allowed");
+//     }
+//   } else {
+//     throw new Error("fileData must be a Buffer or file path string");
+//   }
+
+//   const prompts = {
+//     CV: `You are a professional CV parser. Return exactly this JSON format (no explanation):
+// {
+//   "phone": "Phone number",
+//   "fatherOrHusbandName": "Father or Husband Name",
+//   "skills": ["Skill1", "Skill2"],
+//   "education": [{"degree": "BSc", "institution": "XYZ University"}],
+//   "experience": [{"title": "Job Title", "company": "Company", "duration": "Years"}]
+// }`,
+
+//     CNIC: `You are a CNIC parser. Return exactly this JSON format (no explanation):
 // {
 //   "cnic": "#####-#######-#",
 //   "fatherOrHusbandName": "Father or Husband Name",
@@ -159,43 +331,19 @@ module.exports = {
 //   "gender": "M/F",
 //   "nationality": "Pakistan",
 //   "dateOfIssue": "YYYY-MM-DD",
-//   "dateOfExpiry": "YYYY-MM-DD",
-//   "presentAddress": "Present address in English",
-//   "permanentAddress": "Permanent address in English"
+//   "dateOfExpiry": "YYYY-MM-DD"
 // }`,
-//     generic: `Extract key information from the following text and summarize it.`,
+
+//     generic: `Summarize this extracted text clearly. Highlight useful information and avoid repetition.`,
 //   };
+
 //   const systemInstruction = prompts[documentType] || prompts.generic;
+//   const promptText = `Extracted OCR Text:\n\n"""${rawText}"""`;
 
-//   // Helper for one file
-//   async function processOne(file) {
-//     // OCR
-//     const rawText = await extractTextFromImage(file);
-//     const promptText = `OCR Extracted Text:\n\n${rawText}`;
-//     // AI parse
-//     const parsed = await sendTextToAI(promptText, systemInstruction);
-//     // Try to parse JSON if CNIC
-//     if (documentType === "CNIC") {
-//       try {
-//         return JSON.parse(parsed);
-//       } catch {
-//         // if not valid JSON, return raw
-//         return { error: "Invalid JSON", raw: parsed };
-//       }
-//     }
-//     return parsed;
-//   }
-
-//   // If array, map
-//   if (Array.isArray(fileData)) {
-//     const results = [];
-//     for (const f of fileData) {
-//       results.push(await processOne(f));
-//     }
-//     return results;
-//   } else {
-//     return await processOne(fileData);
-//   }
+//   const result = await sendTextToAI(promptText, systemInstruction);
+//   return result;
 // }
 
-// module.exports = { extractTextUsingAI };
+// module.exports = {
+//   extractTextUsingAI,
+// };

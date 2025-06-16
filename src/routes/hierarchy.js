@@ -5,7 +5,6 @@ const ctrl = require('../controllers/hierarchyController');
 
 const router = express.Router();
 
-// POST /api/hierarchy/create
 router.post(
   '/create',
   requireAuth,
@@ -19,7 +18,6 @@ router.post(
     }
 
     try {
-      // owner comes from requireAuth → req.user
       const hierarchy = new EmployeeHierarchy({
         owner:    req.user._id,
         senior,
@@ -36,15 +34,10 @@ router.post(
     }
   }
 );
-
-
-// Single relationship
-// Bulk relationships
 router.post('/bulkCreate', ctrl.bulkCreate);
-// Return the tree structure
 router.get('/', ctrl.getHierarchy);
-// (Optional) other endpoints...
 router.get('/:employeeId/directReports', ctrl.getDirectReports);
 router.get('/:employeeId/managementChain', ctrl.getManagementChain);
+router.delete('/hierarchy/:id', requireAuth, ctrl.deleteHierarchy);
 
 module.exports = router;

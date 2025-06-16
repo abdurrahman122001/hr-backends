@@ -6,6 +6,7 @@ exports.getAllEmployees = async (req, res) => {
     const list = await Employee
       .find({ owner: req.user._id })      // ← only this user’s employees
       .sort({ name: 1 })
+      .populate('shifts', 'name')
       .lean();
     res.json(list);
   } catch (err) {
@@ -17,7 +18,8 @@ exports.list = async (req, res) => {
   try {
     const emps = await Employee
       .find({ owner: req.user._id })
-      .select('-owner')                    // hide owner field
+      .select('-owner')
+      .populate('shifts', 'name')
       .sort({ name: 1 })
       .lean();
     res.json({ status: 'success', data: emps });
@@ -27,18 +29,6 @@ exports.list = async (req, res) => {
   }
 };
 
-exports.list = async (req, res) => {
-  try {
-    const emps = await Employee.find({ owner: req.user._id })
-      .select('-owner')                    // hide owner field
-      .sort({ name: 1 })
-      .lean();
-    res.json({ status: 'success', data: emps });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ status: 'error', message: err.message });
-  }
-};
 
 // POST /api/employees
 exports.createEmployee = async (req, res) => {
@@ -58,6 +48,7 @@ exports.createEmployee = async (req, res) => {
       position:        body.position,
       joiningDate:     body.joiningDate,
       cnic:            body.cnic,
+      
       bankAccount:     body.bankAccount,
 
       email:           body.email,

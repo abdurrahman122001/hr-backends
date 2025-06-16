@@ -231,3 +231,27 @@ exports.getHierarchy = async function(req, res) {
     res.status(500).json({ status: 'error', message: 'Failed to fetch hierarchy' });
   }
 };
+exports.deleteHierarchy = async (req, res) => {
+  try {
+    const { id } = req.params;         // juniorId (as per frontend)
+    const senior = req.query.senior;   // seniorId (from query param)
+    if (!id || !senior) {
+      return res.status(400).json({ status: 'error', message: 'junior and senior id required' });
+    }
+
+    // owner is available on req.user._id (requireAuth)
+    const deleted = await Hierarchy.findOneAndDelete({
+      senior,
+      junior: id,
+      owner: req.user._id,
+    });
+
+    if (!deleted) {
+      return res.status(404).json({ status: 'error', message: 'Relationship not found' });
+    }
+    res.json({ status: 'success', message: 'Relationship deleted', data: deleted });
+  } catch (err) {
+    console.error('Delete hierarchy error:', err);
+    res.status(500).json({ status: 'error', message: 'Server error' });
+  }
+};

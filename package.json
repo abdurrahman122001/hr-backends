@@ -23,6 +23,7 @@
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "imap": "^0.8.19",
+    "jimp": "^1.6.0",
     "jsonwebtoken": "^9.0.2",
     "mailparser": "^3.7.3",
     "mongoose": "^8.14.1",
@@ -32,6 +33,7 @@
     "openai": "^5.3.0",
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.17.1",
+    "sharp": "^0.34.2",
     "socket.io": "^4.8.1",
     "tesseract.js": "^6.0.1"
   },

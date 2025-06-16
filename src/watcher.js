@@ -1,6 +1,7 @@
 // watcher.js
 require("dotenv").config();
 
+const path = require("path");
 const Imap = require("imap");
 const { simpleParser } = require("mailparser");
 const mongoose = require("mongoose");
@@ -8,9 +9,12 @@ const mongoose = require("mongoose");
 const { analyzeLeavePolicy, extractTextUsingAI } = require("./services/deepseekService");
 const { generateHRReply, generateRejectionReply } = require("./services/draftReply");
 const { sendEmail } = require("./services/mailService");
-const { sendNdaAndContract } = require("./services/ndaService");
 
 const Employee = require("./models/Employees");
+const {
+  generateAndSaveNda,
+  generateAndSaveContract,
+} = require("./services/ndaService");
 
 // Initialize IMAP connection
 const imap = new Imap(require("./config/imapConfig"));
@@ -34,7 +38,6 @@ function parseStream(stream) {
 
 async function classifyEmail(text) {
   if (!text) return "hr_related";
-  
   if (/\b(\d{1,2}[\/-]\d{1,2}[\/-]\d{4})\b/.test(text) ||
       /\b(today|tomorrow)\b/i.test(text)) {
     return "leave_request";
@@ -56,7 +59,7 @@ async function sendCompleteProfileLink(id, to) {
 
 async function handleApprovalResponse(employee, emailText) {
   const isApproved = /\bapprove\b/i.test(emailText);
-  
+
   if (isApproved) {
     await sendEmail({
       to: employee.email,
@@ -77,7 +80,7 @@ async function handleLeaveRequest(employee, emailText) {
   try {
     const leaveAnalysis = await analyzeLeavePolicy(emailText);
     const reply = await generateHRReply(leaveAnalysis);
-    
+
     await sendEmail({
       to: employee.email,
       subject: "Leave Request Update",
@@ -90,6 +93,28 @@ async function handleLeaveRequest(employee, emailText) {
       subject: "Leave Request Error",
       html: "There was an error processing your leave request. Please contact HR directly."
     });
+  }
+}
+
+// MAIN: Ensure NDA & contract are generated and saved for the employee, and update paths in DB.
+async function ensureDocsGenerated(emp) {
+  if (!emp) return;
+  let updated = false;
+  // NDA
+  if (emp.name && emp.cnic) {
+    const ndaPath = await generateAndSaveNda(emp);
+    if (ndaPath && emp.ndaPath !== ndaPath) {
+      emp.ndaPath = ndaPath;
+      emp.ndaGenerated = true;
+      updated = true;
+    }
+    // Contract
+    const contractPath = await generateAndSaveContract(emp);
+    if (contractPath && emp.contractPath !== contractPath) {
+      emp.contractPath = contractPath;
+      updated = true;
+    }
+    if (updated) await emp.save();
   }
 }
 
@@ -154,10 +179,14 @@ async function processMessage(stream) {
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
 
-      // Send profile completion link and NDA
+      // Send profile completion link
       await sendCompleteProfileLink(emp._id, fromAddr);
-      await sendNdaAndContract(emp, fromAddr);
     }
+
+    // Always re-fetch for up-to-date info (after upsert)
+    emp = await Employee.findOne({ email: fromAddr });
+    // Ensure NDA/Contract generated and paths updated in DB
+    if (emp) await ensureDocsGenerated(emp);
 
     // Classify and reply to plain-text emails
     let label;
@@ -185,9 +214,6 @@ async function processMessage(stream) {
       if (emp) {
         await handleLeaveRequest(emp, bodyText);
       }
-    } else if (label === "hr_related") {
-      const reply = await generateHRReply(bodyText);
-      await sendEmail({ to: fromAddr, subject: "HR Policy Info", html: reply });
     }
   } catch (error) {
     console.error("Error processing message:", error);

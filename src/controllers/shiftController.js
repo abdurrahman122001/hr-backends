@@ -1,46 +1,124 @@
 // backend/src/controllers/shiftController.js
 const Shift = require('../models/Shift');
+const Employee = require('../models/Employees');
 
+// exports.getShifts = async (req, res) => {
+//   try {
+//     const shifts = await Shift.find({ owner: req.user._id }).lean();
+//     res.json(shifts);
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// };
 exports.getShifts = async (req, res) => {
   try {
     const shifts = await Shift.find({ owner: req.user._id }).lean();
-    res.json(shifts);
+
+    // Ensure graceTime always exists in response (for legacy data)
+    const enrichedShifts = shifts.map(shift => ({
+      ...shift,
+      graceTime: typeof shift.graceTime === "number" ? shift.graceTime : 0,
+    }));
+
+    res.json(enrichedShifts);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
- exports.createShift = async (req, res) => {
-   try {
-     // pull exactly the fields your schema requires:
-     const { name, timezone, start, end } = req.body;
-     const shift = await Shift.create({
-       owner:    req.user._id,
-       name,
-       timezone,
-       start,
-       end,
-     });
-     res.status(201).json(shift);
-   } catch (err) {
-     res.status(400).json({ error: err.message });
-   }
- };
+function addMinutesToTime(time, minutes) {
+  // time is a string "HH:mm", minutes is integer
+  const [h, m] = time.split(':').map(Number);
+  const date = new Date(1970, 0, 1, h, m);
+  date.setMinutes(date.getMinutes() + (minutes || 0));
+  // Return in "HH:mm" 24-hour format, zero-padded
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+// CREATE SHIFT
+exports.createShift = async (req, res) => {
+  try {
+    const { name, timezone, start, end, graceMinutes, isHourly, setHours } = req.body;
+    let shiftData = {
+      owner: req.user._id,
+      name,
+      timezone,
+      start,
+      end,
+      isHourly: !!isHourly
+    };
+
+    if (isHourly) {
+      if (typeof setHours !== 'number' || setHours < 1) {
+        return res.status(400).json({ error: 'setHours is required and must be a positive number for hourly shift' });
+      }
+      shiftData.setHours = setHours;
+      shiftData.graceMinutes = undefined;
+      shiftData.graceTime = undefined;
+    } else {
+      if (typeof graceMinutes !== 'number' || graceMinutes < 0) {
+        return res.status(400).json({ error: 'graceMinutes is required and must be a number for classic shift' });
+      }
+      shiftData.graceMinutes = graceMinutes;
+      shiftData.graceTime = addMinutesToTime(start, graceMinutes);
+      shiftData.setHours = undefined;
+    }
+
+    const shift = await Shift.create(shiftData);
+    res.status(201).json(shift);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
+
+// UPDATE SHIFT
 exports.updateShift = async (req, res) => {
-   try {
-     const { id } = req.params;
-     const { name, timezone, start, end } = req.body;
-     const shift = await Shift.findOneAndUpdate(
-       { _id: id, owner: req.user._id },
-       { name, timezone, start, end },
-       { new: true }
-     );
+  try {
+    const { id } = req.params;
+    const { name, timezone, start, end, graceMinutes, isHourly, setHours } = req.body;
+    let update = {
+      name, timezone, start, end, isHourly: !!isHourly
+    };
+
+    if (isHourly) {
+      if (typeof setHours !== 'number' || setHours < 1) {
+        return res.status(400).json({ error: 'setHours is required and must be a positive number for hourly shift' });
+      }
+      update.setHours = setHours;
+      update.graceMinutes = undefined;
+      update.graceTime = undefined;
+    } else {
+      if (typeof graceMinutes !== 'number' || graceMinutes < 0) {
+        return res.status(400).json({ error: 'graceMinutes is required and must be a number for classic shift' });
+      }
+      update.graceMinutes = graceMinutes;
+      update.graceTime = addMinutesToTime(start, graceMinutes);
+      update.setHours = undefined;
+    }
+
+    // Update the shift
+    const shift = await Shift.findOneAndUpdate(
+      { _id: id, owner: req.user._id },
+      update,
+      { new: true }
+    );
     if (!shift) return res.status(404).json({ error: 'Not found' });
+
+    // If shift is classic and graceTime is set, update all employees' rt
+    if (!shift.isHourly && shift.graceTime) {
+      await Employee.updateMany(
+        { shifts: shift._id },
+        { $set: { rt: shift.graceTime } }
+      );
+    }
     res.json(shift);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 };
+
 
 exports.deleteShift = async (req, res) => {
   try {
