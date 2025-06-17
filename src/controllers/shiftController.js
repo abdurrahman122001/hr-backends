@@ -2,14 +2,6 @@
 const Shift = require('../models/Shift');
 const Employee = require('../models/Employees');
 
-// exports.getShifts = async (req, res) => {
-//   try {
-//     const shifts = await Shift.find({ owner: req.user._id }).lean();
-//     res.json(shifts);
-//   } catch (err) {
-//     res.status(500).json({ error: err.message });
-//   }
-// };
 exports.getShifts = async (req, res) => {
   try {
     const shifts = await Shift.find({ owner: req.user._id }).lean();
@@ -17,7 +9,7 @@ exports.getShifts = async (req, res) => {
     // Ensure graceTime always exists in response (for legacy data)
     const enrichedShifts = shifts.map(shift => ({
       ...shift,
-      graceTime: typeof shift.graceTime === "number" ? shift.graceTime : 0,
+     graceTime: typeof shift.graceTime === "string" ? shift.graceTime : "",
     }));
 
     res.json(enrichedShifts);
