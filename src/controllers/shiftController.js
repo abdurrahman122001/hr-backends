@@ -4,7 +4,7 @@ const Employee = require('../models/Employees');
 
 exports.getShifts = async (req, res) => {
   try {
-    const shifts = await Shift.find({ owner: req.user._id }).lean();
+    const shifts = await Shift.find({ owner: req.user._id }).populate('payrollPeriod').lean();
 
     // Ensure graceTime always exists in response (for legacy data)
     const enrichedShifts = shifts.map(shift => ({

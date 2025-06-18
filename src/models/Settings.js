@@ -17,16 +17,7 @@ const SettingsSchema = new Schema({
     type:    Boolean,
     default: true,
   },
-  payrollPeriodType: {
-    type: String,
-    enum: ['daily', 'weekly', '10-days', 'bimonthly', 'monthly', 'custom'],
-    default: 'monthly'
-  },
-  payrollPeriodStartDay: {
-    type: String, // ISO date string: 'YYYY-MM-DD'
-    default: null
-  },
-  payrollPeriodLength: { type: Number },
+
 }, {
   timestamps: true,
 });

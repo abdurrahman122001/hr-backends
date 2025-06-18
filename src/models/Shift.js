@@ -7,6 +7,10 @@ const ShiftSchema = new Schema({
   timezone:     { type: String, required: true },
   start:        { type: String, required: true }, 
   end:          { type: String, required: true }, 
+  payrollPeriod: {
+  type: Schema.Types.ObjectId,
+  ref: 'PayrollPeriod',  // reference to PayrollPeriod collection
+},
   graceMinutes: { type: Number }, 
   graceTime:    { type: String },
   isHourly:     { type: Boolean, default: false },
